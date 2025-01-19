@@ -136,3 +136,4 @@ Dockerfile.ssh_test
 docker-compose.yml
 /src/proto/*
 Makefile
+db.db

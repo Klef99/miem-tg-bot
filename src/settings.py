@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     GIGACHAT_KEY: str
     
     model_config = SettingsConfigDict(
-        env_file=f"{pathlib.Path(__file__).resolve().parent}/.env"
+        # env_file=f"{pathlib.Path(__file__).resolve().parent}/.env"
+         env_file=f".env"
     )
 
     def get_db_url(self):

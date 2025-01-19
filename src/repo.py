@@ -62,7 +62,7 @@ async def add_many_points(points_data: list[PointData], session: AsyncSession) -
 @connection
 async def get_all_events(session: AsyncSession) -> list["Event"]:
     events = await session.execute(select(Event).options(joinedload(Event.points)))
-    return events.scalars().all()
+    return events.unique().scalars().all()
 
 @connection
 async def get_event_by_id(event_id: int, session: AsyncSession) -> Event | None:
@@ -72,9 +72,10 @@ async def get_event_by_id(event_id: int, session: AsyncSession) -> Event | None:
 @connection
 async def get_all_users(session: AsyncSession) -> list["User"]:
     users = await session.execute(select(User).options(joinedload(User.events), joinedload(User.points)))
-    return users.scalars().all()
+    return users.unique().scalars().all()
 
 @connection
 async def update_event(data: EventData, event_id: int, session: AsyncSession) -> int:
     event = await session.execute(update(Event).where(Event.id == event_id).values(name=data.name, desc=data.desc, org_id=data.org_id))
+    await session.commit()
     return 1 if event.rowcount == 1 else -1
