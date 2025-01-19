@@ -1,4 +1,3 @@
-from re import S
 import tempfile
 from types import new_class
 from aiogram import Bot, Dispatcher, types
@@ -15,7 +14,7 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, KeyboardButtonPol
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import BotCommand, BotCommandScopeDefault
+from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from aiogram.types import CallbackQuery
 from aiogram.utils.chat_action import ChatActionSender
 from aiogram.types import ReplyKeyboardRemove
@@ -31,12 +30,11 @@ from datetime import datetime
 import asyncio
 import logging
 import qrcode
-import cv2
 from settings import settings
 from models import *
 import usecase
 import repo
-
+from filters import RoleFilter
 
 class Registration(StatesGroup):
   fio_wait=State()
@@ -64,8 +62,20 @@ dp = Dispatcher(storage=MemoryStorage())
 @dp.message(CommandStart(), State(None))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer('Приветствую вас! Так как вы не зарегистрированны, то функционал бота недоступен. Для регистрации введите команду /reg',
+    try:
+        user = await repo.get_only_user_by_tg_id(message.from_user.id)
+        if user:
+            await message.answer(f'Приветствую, {user.username}! Вы уже зарегистрированы. Ваша роль: {str(user.role).capitalize()}',
+                              reply_markup=ReplyKeyboardRemove())
+            await start_bot(user.role, message.chat.id)
+            return
+        await message.answer('Приветствую вас! Так как вы не зарегистрированны, то функционал бота недоступен. Для регистрации введите команду /reg',
+                          reply_markup=ReplyKeyboardRemove()) 
+    except Exception as e:
+        logger.error(f"Error getting user: {e}")
+        await message.answer('Приветствую вас! Так как вы не зарегистрированны, то функционал бота недоступен. Для регистрации введите команду /reg',
                           reply_markup=ReplyKeyboardRemove())
+        return
 
 
 @dp.message(F.photo, Arbeit.code_wait)  #Сканирование qr-кода
@@ -101,7 +111,7 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
     await message.answer("Действие отменено", reply_markup= ReplyKeyboardRemove())
 
 
-@dp.message(Command("info"), State(None))
+@dp.message(Command("info"), RoleFilter([RoleEnum.ADMIN, RoleEnum.ORGANIZER, RoleEnum.PARTICIPANT]), State(None))
 async def cmd_info(message: Message, state: FSMContext):
     await state.clear()
     try:
@@ -137,7 +147,7 @@ async def points_but(callback: CallbackQuery, callback_data: infoFactory):
     await callback.message.answer(s)
 
 
-@dp.message(Command("leaderboard"), State(None))
+@dp.message(Command("leaderboard"), RoleFilter([RoleEnum.ADMIN, RoleEnum.PARTICIPANT, RoleEnum.ORGANIZER]), State(None))
 async def cmd_leaderboard(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Таблица лидеров:\n")
@@ -147,7 +157,7 @@ async def cmd_leaderboard(message: Message, state: FSMContext):
     await state.clear()
 
 
-@dp.message(Command("scan"), State(None))
+@dp.message(Command("scan"), RoleFilter([RoleEnum.ADMIN, RoleEnum.PARTICIPANT, RoleEnum.ORGANIZER]), State(None))
 async def cmd_scan_call(message: Message, state: FSMContext):
     await message.answer("Отсканируйте qr-код и отправьте результат сообщением")
     await state.set_state(Arbeit.code_wait.state)
@@ -159,13 +169,13 @@ roles = [
         ]
 roles_logic = ["участник", "организатор"]
 
-@dp.message(Command("reg"), State(None))  #Регистрация пользователя
+@dp.message(Command("reg"), RoleFilter([RoleEnum.UNREGISTER]), State(None))  #Регистрация пользователя
 async def cmd_reg_start(message: Message,state: FSMContext):
     keyboard = types.ReplyKeyboardMarkup(keyboard=roles, resize_keyboard=True)
     await message.answer("Выберете роль:", reply_markup=keyboard)
     await state.set_state(Registration.role_wait.state)
 
-@dp.message(F.text,Registration.role_wait)
+@dp.message(F.text, Registration.role_wait)
 async def cmd_reg_role(message: types.Message, state: FSMContext):
     if message.text.lower() not in roles_logic:
         await message.answer("Пожалуйста, выберите роль, используя клавиатуру ниже.")
@@ -174,7 +184,7 @@ async def cmd_reg_role(message: types.Message, state: FSMContext):
     await state.set_state(Registration.fio_wait.state)
     await message.answer("Введите своё имя пользователя через клавиатуру:", reply_markup=ReplyKeyboardRemove())
 
-@dp.message(F.text, Registration.fio_wait)
+@dp.message(F.text,  Registration.fio_wait)
 async def cmd_reg_fio(message: types.Message, state: FSMContext):
     if len(message.text) < 4:
       await message.answer(f'Имя введено некорректно (меньше 4-х символов). Повторите ввод')
@@ -197,6 +207,7 @@ async def cmd_reg_fio(message: types.Message, state: FSMContext):
         await state.clear()
         return
     await message.answer(f'Успешная регистрация!')
+    await start_bot(RoleEnum(user["Role"]), message.chat.id)
     await state.clear()
 
 
@@ -206,7 +217,7 @@ class event_reg(StatesGroup):
   description_wait = State()
 
 
-@dp.message( Command("event"), State(None))
+@dp.message(Command("event"), RoleFilter([RoleEnum.ADMIN, RoleEnum.ORGANIZER]), State(None))
 async def cmd_event_start(message: types.Message, state: FSMContext):
     await message.answer("Введите название вашего мероприятия")
     await state.set_state(event_reg.place_wait.state)
@@ -237,7 +248,7 @@ async def cmd_event_description(message: types.Message, state: FSMContext):
     await message.answer("Ваше мероприятие зарегистрированно!")
 
 
-@dp.message(Command("redact"), State(None))
+@dp.message(Command("redact"), RoleFilter([RoleEnum.ADMIN, RoleEnum.ORGANIZER]), State(None))
 async def cmd_redact_start(message: Message, state: FSMContext):
     try:
         events = await usecase.get_all_user_events(message.from_user.id)
@@ -311,7 +322,7 @@ async def desc_change_end(message: Message, state: FSMContext):
         return
 
 
-@dp.message(Command("generate"), State(None))
+@dp.message(Command("generate"), RoleFilter([RoleEnum.ADMIN, RoleEnum.ORGANIZER]), State(None))
 async def cmd_generate_start(message: Message, state: FSMContext):
     await message.answer("Введите id мероприятия для создания QR-кода")
     try:
@@ -378,16 +389,15 @@ async def cmd_generate_part(message: Message, state: FSMContext):
     await state.clear()
 
 
-@dp.message()
-async def prtext(message: Message, state: FSMContext):
-    await message.answer("Нельзя писать произвольный текст)")
+# @dp.message()
+# async def prtext(message: Message):
+#     await message.answer("Нельзя писать произвольный текст)")
 
 def register_handlers_common(dp: Dispatcher):
     dp.register_message_handler(cmd_start, commands="start", state="*")
     dp.register_message_handler(cmd_cancel, commands="cancel", state="*")
 
-async def start_bot():
-    user_role = RoleEnum.ADMIN
+async def start_bot(user_role: RoleEnum=RoleEnum.UNREGISTER, chat_id: int=None):
     match user_role:
       case RoleEnum.ORGANIZER:
         commands =[BotCommand(command='start', description='старт работы с ботом'),
@@ -414,8 +424,10 @@ async def start_bot():
                 BotCommand(command='generate', description='создать qr-код для этапа'),
                 BotCommand(command='info',description = 'вывести информацию о мероприятиях'),
                 BotCommand(command='leaderboard', description='вывести таблицу лидеров')]
-    await bot.set_my_commands(commands, BotCommandScopeDefault())
-
+    if chat_id is None:
+        await bot.set_my_commands(commands, BotCommandScopeDefault())
+    else:
+        await bot.set_my_commands(commands, BotCommandScopeDefault())
 async def main():
     #тут из бд брать роль пользовател
     dp.startup.register(start_bot)

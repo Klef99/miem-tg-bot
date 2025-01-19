@@ -1,8 +1,8 @@
-"""Initial revision
+"""init
 
-Revision ID: 4668818316ee
+Revision ID: 7eaa61d455b9
 Revises: 
-Create Date: 2025-01-15 22:14:45.807684
+Create Date: 2025-01-19 23:12:18.056842
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '4668818316ee'
+revision: str = '7eaa61d455b9'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -23,7 +23,7 @@ def upgrade() -> None:
     op.create_table('users',
     sa.Column('username', sa.String(), nullable=False),
     sa.Column('tg_id', sa.Integer(), nullable=False),
-    sa.Column('role', sa.Enum('PARTICIPANT', 'ORGANIZER', name='roleenum'), server_default='PARTICIPANT', nullable=False),
+    sa.Column('role', sa.Enum('PARTICIPANT', 'ORGANIZER', 'ADMIN', 'UNREGISTER', name='roleenum'), server_default='PARTICIPANT', nullable=False),
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),

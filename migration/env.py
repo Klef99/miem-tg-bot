@@ -5,7 +5,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from database import Base
-from models import User, Event, Point
+from models import User, Event, Point, PointUser
 from settings import settings
 
 config = context.config

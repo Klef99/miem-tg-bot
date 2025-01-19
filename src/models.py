@@ -7,8 +7,8 @@ from dataclasses import dataclass
 class RoleEnum(enum.StrEnum):
     PARTICIPANT = "участник"
     ORGANIZER = "организатор"
-    # ADMIN = "администратор"
-    # UNREGISTER = "незарегистрированный"
+    ADMIN = "администратор"
+    UNREGISTER = "незарегистрированный"
 
 @dataclass
 class UserData:
