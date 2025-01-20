@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     TG_KEY: str
     DATABASE_SQLITE_NAME: str
     GIGACHAT_KEY: str
-    
+    EMAIL_ADDRESS: str
+    EMAIL_PASSWORD: str
     model_config = SettingsConfigDict(
         # env_file=f"{pathlib.Path(__file__).resolve().parent}/.env"
          env_file=f".env"

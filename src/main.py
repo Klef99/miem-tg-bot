@@ -1,5 +1,4 @@
 import tempfile
-from types import new_class
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -26,10 +25,16 @@ from aiogram.types import TelegramObject
 from html import escape
 from pyzbar.pyzbar import decode
 from PIL import Image
-from datetime import datetime
+from datetime import datetime, timedelta
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 import logging
 import qrcode
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from aiosmtplib import SMTP
+
+
 from settings import settings
 from models import *
 import usecase
@@ -48,6 +53,7 @@ class Arbeit(StatesGroup,):
   redact_event_name = State()
   change_event_name = State()
   change_event_desc = State()
+  feedback_wait = State()
 
 
 class infoFactory(CallbackData, prefix='mero'):
@@ -58,6 +64,7 @@ logging.basicConfig(force=True, level=logging.INFO, format='%(asctime)s - %(name
 logger = logging.getLogger(__name__)
 bot = Bot(token=settings.TG_KEY, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
+sheduler = AsyncIOScheduler()
 
 @dp.message(CommandStart(), State(None))
 async def cmd_start(message: Message, state: FSMContext):
@@ -78,6 +85,37 @@ async def cmd_start(message: Message, state: FSMContext):
         return
 
 
+@dp.message(Command('feedback'), RoleFilter([RoleEnum.ADMIN, RoleEnum.ORGANIZER, RoleEnum.PARTICIPANT]), State(None))
+async def cmd_feedback(message: Message, state: FSMContext):
+    await message.answer('Напишите текст отзыва и я отправлю его моим создателям')
+    await state.set_state(Arbeit.feedback_wait.state)
+
+@dp.message(F.text, Arbeit.feedback_wait)
+async def send_feedback(message: Message, state: FSMContext):
+    try:
+        msg = message.text
+        email_msg = MIMEMultipart()
+        email_msg["From"] = settings.EMAIL_ADDRESS
+        email_msg["To"] = settings.EMAIL_ADDRESS
+        email_msg["Subject"] = 'feedback'
+        email_msg.attach(MIMEText(f"<html><body>{msg}</body></html>", "html", "utf-8"))
+        smtp_client = SMTP(hostname="smtp.mail.ru", port=465, use_tls=True)
+        async with smtp_client:
+            await smtp_client.login(settings.EMAIL_ADDRESS, settings.EMAIL_PASSWORD)
+            await smtp_client.send_message(email_msg)
+        # message.answer("Отзыв отправлен!")
+        await state.clear()
+    except Exception as e:
+        logger.error(f"Error sending feedback: {e}")
+        await message.answer('Произошла ошибка при отправке отзыва. Пожалуйста, попробуйте снова.')
+        return
+
+async def send_after(user_id: int):
+  await bot.send_message(
+                user_id,
+                "Привет! Прошла неделя с момента вашей регистрации. Нам будет приятно, если вы оставите отзыв о нашем боте!\n вызовите команду \feedback, чтобы написать отзыв"
+            )
+
 @dp.message(F.photo, Arbeit.code_wait)  #Сканирование qr-кода
 async def QrCodePhoto(message: types.Message, state: FSMContext):
     try:
@@ -96,9 +134,9 @@ async def QrCodePhoto(message: types.Message, state: FSMContext):
                     await state.clear()
                     return
                 await message.answer(f"Баллы начислены!")
+                await state.clear()
             else:
                 await message.answer("QR-код не найден. Попробуй еще раз.")
-        await state.clear()
     except Exception as e:
         logging.error(f"Ошибка при обработке QR-кода: {e}")
         await message.answer("Произошла ошибка при обработке QR-кода. Попробуй еще раз.")
@@ -214,6 +252,8 @@ async def cmd_reg_fio(message: types.Message, state: FSMContext):
         await state.clear()
         return
     await message.answer(f'Успешная регистрация!')
+    send_time = datetime.now() + timedelta(seconds=20)
+    sheduler.add_job(send_after, "date", run_date=send_time, args=[message.from_user.id])
     await start_bot(RoleEnum(user["Role"]), message.chat.id)
     await state.clear()
 
@@ -358,7 +398,7 @@ async def cmd_generate_name(message: Message, state: FSMContext):
         await state.update_data(event_id=id)
     except ValueError:
         await message.answer("❌Мероприятие с таким id не найдено")
-        await state.clear()
+        # await state.clear()
         return
     except Exception as e:
         logger.error(f"Error getting events: {e}")
@@ -386,7 +426,7 @@ async def cmd_generate_part(message: Message, state: FSMContext):
         return
     if id not in [point.id for point in event.points]:
         await message.answer("❌Этап мероприятия с таким id не найден!")
-        await state.clear()
+        # await state.clear()
         return
     photo = qrcode.make(id)
     with tempfile.NamedTemporaryFile() as tmp:
@@ -413,12 +453,14 @@ async def start_bot(user_role: RoleEnum=RoleEnum.UNREGISTER, chat_id: int=None):
                 BotCommand(command='redact', description='редактировать мероприятие'),
                 BotCommand(command='generate', description='создать qr-код для этапа'),
                 BotCommand(command='info',description = 'вывести информацию о мероприятиях'),
-                BotCommand(command='leaderboard', description='вывести таблицу лидеров')]
+                BotCommand(command='leaderboard', description='вывести таблицу лидеров'),
+                BotCommand(command='feedback', description='отправить обратную связь')]
       case RoleEnum.PARTICIPANT:
         commands =[BotCommand(command='start', description='старт работы с ботом'),
                   BotCommand(command='info',description = 'вывести информацию о мероприятиях'),
                   BotCommand(command='scan', description='сканировать qr-код'),
-                  BotCommand(command='leaderboard', description='вывести таблицу лидеров')]
+                  BotCommand(command='leaderboard', description='вывести таблицу лидеров'),
+                  BotCommand(command='feedback', description='отправить обратную связь')]
       case RoleEnum.UNREGISTER:
         commands =[BotCommand(command='start', description='старт работы с ботом'),
                   BotCommand(command='reg', description='регистрация пользователя')]
@@ -430,14 +472,16 @@ async def start_bot(user_role: RoleEnum=RoleEnum.UNREGISTER, chat_id: int=None):
                 BotCommand(command='redact', description='редактировать мероприятие'),
                 BotCommand(command='generate', description='создать qr-код для этапа'),
                 BotCommand(command='info',description = 'вывести информацию о мероприятиях'),
-                BotCommand(command='leaderboard', description='вывести таблицу лидеров')]
+                BotCommand(command='leaderboard', description='вывести таблицу лидеров'),
+                BotCommand(command='feedback', description='отправить обратную связь')]
     if chat_id is None:
         await bot.set_my_commands(commands, BotCommandScopeDefault())
     else:
-        await bot.set_my_commands(commands, BotCommandScopeDefault())
+        await bot.set_my_commands(commands, BotCommandScopeChat(chat_id=chat_id))
 async def main():
     #тут из бд брать роль пользовател
     dp.startup.register(start_bot)
+    sheduler.start()
     try:
       print("Бот запущен...")
       await bot.delete_webhook(drop_pending_updates=True)
