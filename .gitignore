@@ -137,3 +137,4 @@ docker-compose.yml
 /src/proto/*
 Makefile
 db.db
+tz2.txt
