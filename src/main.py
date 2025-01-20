@@ -169,8 +169,15 @@ roles = [
         ]
 roles_logic = ["участник", "организатор"]
 
-@dp.message(Command("reg"), RoleFilter([RoleEnum.UNREGISTER]), State(None))  #Регистрация пользователя
+@dp.message(Command("reg"), State(None))  #Регистрация пользователя
 async def cmd_reg_start(message: Message,state: FSMContext):
+    try:
+        user = await repo.get_only_user_by_tg_id(message.from_user.id)
+        if user is not None:
+            raise(Exception('User not found'))
+    except Exception as e:
+        await message.answer("Вы уже зарегистрированы!")
+        return
     keyboard = types.ReplyKeyboardMarkup(keyboard=roles, resize_keyboard=True)
     await message.answer("Выберете роль:", reply_markup=keyboard)
     await state.set_state(Registration.role_wait.state)

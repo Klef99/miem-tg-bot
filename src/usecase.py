@@ -72,6 +72,8 @@ async def get_leaderboard():
         users = await repo.get_all_users()
         res = []
         for user in users:
+            if user.role != RoleEnum.PARTICIPANT:
+                continue
             points = sum([pt.reward for pt in user.points])
             res.append((user.username, points))
         return sorted(res, key=lambda x: x[1], reverse=True)
