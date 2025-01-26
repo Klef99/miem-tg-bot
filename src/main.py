@@ -143,7 +143,7 @@ async def QrCodePhoto(message: types.Message, state: FSMContext):
         await state.clear()
 
 
-@dp.message(Command("cancel"), State(None))
+@dp.message(Command("cancel"))
 async def cmd_cancel(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Действие отменено", reply_markup= ReplyKeyboardRemove())
@@ -436,9 +436,9 @@ async def cmd_generate_part(message: Message, state: FSMContext):
     await state.clear()
 
 
-# @dp.message()
-# async def prtext(message: Message):
-#     await message.answer("Нельзя писать произвольный текст)")
+@dp.message()
+async def prtext(message: Message):
+    await message.answer("Бот не поддерживает произвольный ввод текста")
 
 def register_handlers_common(dp: Dispatcher):
     dp.register_message_handler(cmd_start, commands="start", state="*")
@@ -454,16 +454,19 @@ async def start_bot(user_role: RoleEnum=RoleEnum.UNREGISTER, chat_id: int=None):
                 BotCommand(command='generate', description='создать qr-код для этапа'),
                 BotCommand(command='info',description = 'вывести информацию о мероприятиях'),
                 BotCommand(command='leaderboard', description='вывести таблицу лидеров'),
-                BotCommand(command='feedback', description='отправить обратную связь')]
+                BotCommand(command='feedback', description='отправить обратную связь'),
+                BotCommand(command='cancel', description='отменить текущее действие')]
       case RoleEnum.PARTICIPANT:
         commands =[BotCommand(command='start', description='старт работы с ботом'),
                   BotCommand(command='info',description = 'вывести информацию о мероприятиях'),
                   BotCommand(command='scan', description='сканировать qr-код'),
                   BotCommand(command='leaderboard', description='вывести таблицу лидеров'),
-                  BotCommand(command='feedback', description='отправить обратную связь')]
+                  BotCommand(command='feedback', description='отправить обратную связь'),
+                  BotCommand(command='cancel', description='отменить текущее действие')]
       case RoleEnum.UNREGISTER:
         commands =[BotCommand(command='start', description='старт работы с ботом'),
-                  BotCommand(command='reg', description='регистрация пользователя')]
+                  BotCommand(command='reg', description='регистрация пользователя'),
+                  BotCommand(command='cancel', description='отменить текущее действие')]
       case RoleEnum.ADMIN:
         commands = [BotCommand(command='start', description='старт работы с ботом'),
                 BotCommand(command='scan', description='сканировать qr-код'),
@@ -473,7 +476,8 @@ async def start_bot(user_role: RoleEnum=RoleEnum.UNREGISTER, chat_id: int=None):
                 BotCommand(command='generate', description='создать qr-код для этапа'),
                 BotCommand(command='info',description = 'вывести информацию о мероприятиях'),
                 BotCommand(command='leaderboard', description='вывести таблицу лидеров'),
-                BotCommand(command='feedback', description='отправить обратную связь')]
+                BotCommand(command='feedback', description='отправить обратную связь'),
+                BotCommand(command='cancel', description='отменить текущее действие')]
     if chat_id is None:
         await bot.set_my_commands(commands, BotCommandScopeDefault())
     else:
